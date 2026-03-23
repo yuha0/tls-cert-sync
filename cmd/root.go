@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -19,9 +20,10 @@ import (
 	"github.com/tlscertsync/pkg/metrics"
 	"github.com/tlscertsync/pkg/target"
 	_ "github.com/tlscertsync/pkg/target/truenas"
+	_ "github.com/tlscertsync/pkg/target/unifi"
 )
 
-var Version = "v1.0.0"
+var Version = "dev"
 
 var (
 	certDir    string
@@ -41,6 +43,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.SetVersionTemplate("{{.Version}}\n")
 	rootCmd.Flags().BoolP("version", "v", false, "Print version and exit")
 	rootCmd.Flags().StringVarP(&certDir, "cert-dir", "c", ".", "Directory containing tls.crt and tls.key")
 	rootCmd.Flags().StringVarP(&targetType, "type", "t", "", "Target system type (e.g., truenas)")
@@ -120,18 +123,39 @@ func run(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	reconcile(ctx, t, h)
+	baseInterval := time.Duration(interval) * time.Second
+	var backoffExponent int
 
-	ticker := time.NewTicker(time.Duration(interval) * time.Second)
-	defer ticker.Stop()
+	doReconcile := func() {
+		err := reconcile(ctx, t, h)
+		if err != nil && errors.Is(err, target.ErrRateLimited) {
+			backoffExponent++
+			extra := 5 * time.Second * (1 << (backoffExponent - 1))
+			slog.Warn("rate limited, backing off", "extra", extra)
+		} else {
+			backoffExponent = 0
+		}
+	}
+
+	doReconcile()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 
 	for {
+		wait := baseInterval
+		if backoffExponent > 0 {
+			extra := 5 * time.Second * (1 << (backoffExponent - 1))
+			const maxExtra = time.Hour
+			if extra > maxExtra {
+				extra = maxExtra
+			}
+			wait += extra
+		}
+
 		select {
-		case <-ticker.C:
-			reconcile(ctx, t, h)
+		case <-time.After(wait):
+			doReconcile()
 		case sig := <-sigCh:
 			slog.Info("received signal, shutting down", "signal", sig)
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -142,14 +166,14 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func reconcile(ctx context.Context, t target.Target, h *health.Health) {
-	slog.Debug("starting reconcile")
+func reconcile(ctx context.Context, t target.Target, h *health.Health) error {
+	slog.Info("reconcile started")
 
 	certPEM, keyPEM, localCert, err := certutil.ReadCertFiles(certDir)
 	if err != nil {
 		slog.Error("failed to read cert files", "error", err)
 		h.SetCertFilesOK(false)
-		return
+		return err
 	}
 	h.SetCertFilesOK(true)
 
@@ -163,9 +187,11 @@ func reconcile(ctx context.Context, t target.Target, h *health.Health) {
 	if err != nil {
 		slog.Error("failed to ensure certificate", "error", err)
 		h.SetRemoteOK(false)
-		return
+		return err
 	}
 	h.SetRemoteOK(true)
 
 	metrics.Update(targetType, targetURL, activeCert)
+	slog.Info("reconcile completed")
+	return nil
 }

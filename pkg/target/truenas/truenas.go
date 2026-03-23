@@ -240,7 +240,7 @@ func (t *TrueNAS) EnsureCert(ctx context.Context, certPEM []byte, keyPEM []byte,
 		if c.cert != nil && bytes.Equal(c.cert.Raw, cert.Raw) {
 			matchingID = c.id
 			found = true
-			slog.Debug("certificate already imported", "name", c.name, "id", c.id)
+			slog.Info("certificate already imported", "name", c.name, "id", c.id)
 			break
 		}
 	}
@@ -262,7 +262,7 @@ func (t *TrueNAS) EnsureCert(ctx context.Context, certPEM []byte, keyPEM []byte,
 	}
 
 	if activeID == matchingID {
-		slog.Debug("certificate is already the active UI certificate", "id", matchingID)
+		slog.Info("certificate is already active, no action needed", "id", matchingID)
 		for _, c := range certs {
 			if c.id == activeID && c.cert != nil {
 				return c.cert, nil

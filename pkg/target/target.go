@@ -3,8 +3,13 @@ package target
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 )
+
+// ErrRateLimited is returned by targets when the remote system throttles requests.
+// The reconcile loop uses this to apply exponential backoff.
+var ErrRateLimited = errors.New("rate limited")
 
 type Target interface {
 	// EnsureCert ensures the given certificate is imported and active on the remote system.
