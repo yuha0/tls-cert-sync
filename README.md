@@ -19,6 +19,29 @@ Uses the official [TrueNAS websocket API client](https://github.com/truenas/api_
 
 **Authentication**: Set the `SYNC_TRUENAS_API_KEY` environment variable to a TrueNAS API key.
 
+Example:
+
+```
+$ export SYNC_TRUENAS_API_KEY=1-abc123...
+$ tlscertsync -t truenas -u https://truenas.example.com -c /certs
+```
+
+### UniFi
+
+Syncs certificates to Ubiquiti UniFi OS via the UniFi OS HTTP API. Uploads the certificate, activates it, and cleans up old ones, keeping at most 2.
+
+Requires UniFi OS 4.1+.
+
+**Authentication**: Set `SYNC_UNIFI_USERNAME` and `SYNC_UNIFI_PASSWORD` environment variables to a local UniFi OS account.
+
+Example:
+
+```
+$ export SYNC_UNIFI_USERNAME=admin
+$ export SYNC_UNIFI_PASSWORD=secret
+$ tlscertsync -t unifi -u https://unifi.example.com -c /certs -k
+```
+
 ## Usage
 
 ### Flags
@@ -32,17 +55,6 @@ Uses the official [TrueNAS websocket API client](https://github.com/truenas/api_
 | `--insecure` | `-k` | `false` | Skip TLS verification when connecting to the remote system |
 | `--log-level` | `-l` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
 | `--version` | `-v` | | Print version and exit |
-
-**Example**:
-
-```
-export SYNC_TRUENAS_API_KEY=1-abc123...
-tlscertsync \
-  --type truenas \
-  --url https://truenas.example.com \
-  --cert-dir /certs \
-  --interval 300
-```
 
 ## Observability
 
