@@ -252,8 +252,6 @@ func (t *TrueNAS) EnsureCert(ctx context.Context, certPEM []byte, keyPEM []byte,
 			return nil, err
 		}
 		matchingID = id
-
-		t.cleanupOldCerts(certName, certs)
 	}
 
 	activeID, err := t.getActiveUICertID()
@@ -285,6 +283,10 @@ func (t *TrueNAS) EnsureCert(ctx context.Context, certPEM []byte, keyPEM []byte,
 	t.client.Call("system.general.ui_restart", 10, []interface{}{0})
 
 	slog.Info("restarted web service with new certificate", "id", matchingID)
+
+	if !found {
+		t.cleanupOldCerts(certName, certs)
+	}
 
 	return cert, nil
 }

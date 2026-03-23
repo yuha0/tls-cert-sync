@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/tlscertsync/pkg/target"
@@ -279,8 +280,6 @@ func (u *UniFi) EnsureCert(ctx context.Context, certPEM []byte, keyPEM []byte, c
 		}
 		slog.Info("uploaded certificate", "name", certName, "id", uploaded.ID)
 		matchingCert = uploaded
-
-		cleanupOldCerts(c, certName, certs)
 	}
 
 	if matchingCert.Active {
@@ -294,9 +293,12 @@ func (u *UniFi) EnsureCert(ctx context.Context, certPEM []byte, keyPEM []byte, c
 	}
 	slog.Info("activated certificate", "id", matchingCert.ID)
 
+	cleanupOldCerts(c, certName, certs)
+
 	return cert, nil
 }
 
+// cleanupOldCerts keeps at most 1 old cert with the same name prefix (2 total including the new one).
 func cleanupOldCerts(c *client, newCertName string, oldCerts []certInfo) {
 	lastDash := strings.LastIndex(newCertName, "-")
 	if lastDash < 0 {
@@ -304,15 +306,29 @@ func cleanupOldCerts(c *client, newCertName string, oldCerts []certInfo) {
 	}
 	prefix := newCertName[:lastDash+1]
 
+	var matching []certInfo
 	for _, ci := range oldCerts {
-		if strings.HasPrefix(ci.Name, prefix) && !ci.Active {
-			slog.Info("deleting old certificate", "name", ci.Name, "id", ci.ID)
-			body, status, err := c.do("DELETE", "/api/userCertificates/"+ci.ID, nil)
-			if err != nil {
-				slog.Warn("failed to delete certificate", "name", ci.Name, "error", err)
-			} else if status != http.StatusOK {
-				slog.Warn("failed to delete certificate", "name", ci.Name, "status", status, "body", truncate(string(body), 200))
-			}
+		if strings.HasPrefix(ci.Name, prefix) {
+			matching = append(matching, ci)
+		}
+	}
+
+	// The newly uploaded cert is not in oldCerts, so keep at most 1 old one.
+	if len(matching) <= 1 {
+		return
+	}
+
+	sort.Slice(matching, func(i, j int) bool {
+		return matching[i].Name > matching[j].Name
+	})
+
+	for _, ci := range matching[1:] {
+		slog.Info("deleting old certificate", "name", ci.Name, "id", ci.ID)
+		body, status, err := c.do("DELETE", "/api/userCertificates/"+ci.ID, nil)
+		if err != nil {
+			slog.Warn("failed to delete certificate", "name", ci.Name, "error", err)
+		} else if status != http.StatusOK {
+			slog.Warn("failed to delete certificate", "name", ci.Name, "status", status, "body", truncate(string(body), 200))
 		}
 	}
 }
