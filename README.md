@@ -15,7 +15,7 @@ The sync logic is idempotent.
 
 ### TrueNAS
 
-Uses the official [TrueNAS websocket API client](https://github.com/truenas/api_client_golang) to import certificates, activate them for the web UI, and restart the web service. Old certificates with the same name prefix are automatically cleaned up, keeping at most 2.
+Uses the official [TrueNAS websocket API client](https://github.com/truenas/api_client_golang) to import certificates, activate them for the web UI, and restart the web service. Old certificates with the same name prefix are automatically deleted once the new certificate is active.
 
 **Authentication**: Set the `SYNC_TRUENAS_API_KEY` environment variable to a TrueNAS API key.
 
@@ -28,7 +28,7 @@ $ tlscertsync -t truenas -u https://truenas.example.com -c /certs
 
 ### UniFi
 
-Syncs certificates to Ubiquiti UniFi OS via the UniFi OS HTTP API. Uploads the certificate, activates it, and cleans up old ones, keeping at most 2.
+Syncs certificates to Ubiquiti UniFi OS via the UniFi OS HTTP API. Uploads the certificate, activates it, and automatically deletes old certificates with the same name prefix.
 
 Requires UniFi OS 4.1+.
 

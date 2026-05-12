@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/tlscertsync/pkg/target"
@@ -284,9 +283,7 @@ func (t *TrueNAS) EnsureCert(ctx context.Context, certPEM []byte, keyPEM []byte,
 
 	slog.Info("restarted web service with new certificate", "id", matchingID)
 
-	if !found {
-		t.cleanupOldCerts(certName, certs)
-	}
+	t.deleteOldCerts(certName, matchingID, certs)
 
 	return cert, nil
 }
@@ -327,30 +324,21 @@ func (t *TrueNAS) importCert(certName string, certPEM []byte, keyPEM []byte) (fl
 	return certID, nil
 }
 
-// cleanupOldCerts keeps at most 2 certs with the same name prefix, deleting the rest.
-func (t *TrueNAS) cleanupOldCerts(newCertName string, certs []certEntry) {
-	lastDash := strings.LastIndex(newCertName, "-")
+// deleteOldCerts deletes all certs matching the naming convention except the active one.
+func (t *TrueNAS) deleteOldCerts(certName string, activeID float64, certs []certEntry) {
+	lastDash := strings.LastIndex(certName, "-")
 	if lastDash < 0 {
 		return
 	}
-	prefix := newCertName[:lastDash+1]
+	prefix := certName[:lastDash+1]
 
-	var matching []certEntry
 	for _, c := range certs {
-		if strings.HasPrefix(c.name, prefix) {
-			matching = append(matching, c)
+		if !strings.HasPrefix(c.name, prefix) {
+			continue
 		}
-	}
-
-	if len(matching) <= 1 {
-		return
-	}
-
-	sort.Slice(matching, func(i, j int) bool {
-		return matching[i].id > matching[j].id
-	})
-
-	for _, c := range matching[1:] {
+		if c.id == activeID {
+			continue
+		}
 		slog.Info("deleting old certificate", "name", c.name, "id", c.id)
 		deleteParams := []interface{}{int(c.id), true}
 		if _, err := t.client.Call("certificate.delete", 30, deleteParams); err != nil {
