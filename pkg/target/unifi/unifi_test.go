@@ -1,13 +1,18 @@
 package unifi
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"log/slog"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -103,5 +108,40 @@ func TestClose(t *testing.T) {
 	u := &UniFi{}
 	if err := u.Close(); err != nil {
 		t.Errorf("Close should not error, got: %v", err)
+	}
+}
+
+func TestDeleteOldCerts_NoContentIsSuccess(t *testing.T) {
+	var deleted []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		deleted = append(deleted, strings.TrimPrefix(r.URL.Path, "/api/userCertificates/"))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+
+	c, err := newClient(srv.URL, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := []certInfo{
+		{ID: "old", Name: "unifi.example.com-1"},
+		{ID: "active", Name: "unifi.example.com-2"},
+		{ID: "other", Name: "other.example.com-1"},
+	}
+	deleteOldCerts(c, "unifi.example.com-2", "active", old)
+
+	if len(deleted) != 1 || deleted[0] != "old" {
+		t.Fatalf("expected only the old cert to be deleted, got %v", deleted)
+	}
+	if strings.Contains(logs.String(), "failed to delete certificate") {
+		t.Fatalf("204 No Content must be treated as success, got logs:\n%s", logs.String())
 	}
 }

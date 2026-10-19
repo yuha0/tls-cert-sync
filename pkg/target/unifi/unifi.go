@@ -316,7 +316,7 @@ func deleteOldCerts(c *client, certName string, activeID string, oldCerts []cert
 		body, status, err := c.do("DELETE", "/api/userCertificates/"+ci.ID, nil)
 		if err != nil {
 			slog.Warn("failed to delete certificate", "name", ci.Name, "error", err)
-		} else if status != http.StatusOK {
+		} else if status < 200 || status > 299 {
 			slog.Warn("failed to delete certificate", "name", ci.Name, "status", status, "body", truncate(string(body), 200))
 		}
 	}
