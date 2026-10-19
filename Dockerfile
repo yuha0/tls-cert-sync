@@ -1,4 +1,4 @@
-FROM golang:1.25 AS builder
+FROM golang:1.27 AS builder
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -8,6 +8,6 @@ COPY . .
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -ldflags "-X github.com/tlscertsync/cmd.Version=${VERSION}" -o /tlscertsync .
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=builder /tlscertsync /tlscertsync
 ENTRYPOINT ["/tlscertsync"]
